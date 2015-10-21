@@ -1,2 +1,6 @@
 *.sublime-project
 *.sublime-workspace
+build
+dist
+gmusic_playlist_scraper.egg-info
+config.json
