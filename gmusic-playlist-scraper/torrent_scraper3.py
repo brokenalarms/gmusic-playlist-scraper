@@ -16,8 +16,7 @@ from gmusicapi import Mobileclient
 def normalize(unistr, sub=''):
     if sub:
         return re.sub(r'[^a-zA-Z0-9]', sub, unicodedata.normalize('NFKD', unistr).encode('ascii', 'ignore'))
-    else:
-        return unicodedata.normalize('NFKD', unistr).encode('ascii', 'ignore')
+    else: return unicodedata.normalize('NFKD', unistr).encode('ascii', 'ignore')
 
 
 
@@ -154,7 +153,7 @@ def gen_arguments():
     parser.add_argument("-lp", "--google_lp", help="login password for Google Music (and used by uTorrent) (format login(space, no brackets)password", required=True, nargs=2)
     parser.add_argument("-ulp", "--utorrent_lp", help="login password for uTorrent (if different to Google Music password)",)
     parser.add_argument("-f", "--format", default='mp3', help="optional desired format - eg 'mp3' or 'flac' (default=mp3)")
-    parser.add_argument("-l", "--local", default="$HOME/downloads", help="optional check to not add torrent if it already exists locally. default=\"$HOME/Downloads\"")
+    parser.add_argument("-d", "--dir", default="$HOME/downloads", help="optional check to not add torrent if it already exists locally. default=\"$HOME/Downloads\"")
     return parser.parse_args()
 
 if __name__ == '__main__':
