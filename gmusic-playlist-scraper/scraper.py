@@ -1,5 +1,5 @@
 # coding=utf-8
-# 
+
 from __future__ import print_function, unicode_literals
 import json
 import os
@@ -15,8 +15,8 @@ import requests
 def parse_args(config_file_exists):
     parser = argparse.ArgumentParser()
     parser.add_argument("playlist", help="Google music playlist title")
-    parser.add_argument("-f", "--format", default='mp3', help="optional desired format - eg 'mp3' or 'flac' (default is \"mp3\")")
-    parser.add_argument("-d", "--dir", default='$HOME/downloads', help="directory for torrent files. default is \"$HOME/Downloads\"")
+    parser.add_argument("-f", "--format", default='mp3', help="optional desired format - eg 'mp3' or 'FLAC' (default is \"mp3\")")
+    parser.add_argument("-d", "--dir", default='$HOME/downloads', help="directory for retrieved .magnet files. File can be auto-added to Deluge using the bundled 'AutoAdd' plugin. Default location is \"$HOME/Downloads\"")
     parser.add_argument("-aid", "--android_id", default='1234567890abcdef', help="12-digit device id for login identification")
     if not config_file_exists:
         parser.add_argument("-l", "--login", help="login for Google Music", required=True)
@@ -44,7 +44,7 @@ def get_albums_from_playlist(config):
 
 # drops unicode strings like 'POLIÇA' to closest ASCII match for searching
 def normalize(unicode_string):
-    return unicodedata.normalize('NFKD', unicode_string).encode('ascii', 'ignore').lower()
+    return unicodedata.normalize('NFKD', unicode_string).encode('ascii', 'ignore')
 
 def replace(string, sub):
     return re.sub(r'[^a-zA-Z0-9]', sub, string)
@@ -60,9 +60,10 @@ def get_torrent_hashes(album_list, format):
         query = 'http://torrentproject.se/?s=' + search_string + '&out=json'
         results = requests.get(query).json()
 
-        if pop(results['total_found'], '0') is not '0':
+        if results.pop('total_found', '0') is not '0':
             best_match = get_best_match(results, format, artist, album)
             if best_match['torrent_hash'] is not None:
+                print('Found as: %s' % normalize(best_match['title']))
                 found_list.append(best_match)
             else:
                 not_found_list.append(best_match)
@@ -72,43 +73,47 @@ def get_torrent_hashes(album_list, format):
     if len(not_found_list) > 0:
         print('The following searches were unsuccessful:')
         for item in not_found_list:
-            print('{0} - {1}: {3}'.format(item['artist'], item['album'], item['message']))
+            print('{0} - {1}: {3}'.format(item['artist'], item['album'], item['failure_message']))
 
     return found_list
 
 
 def get_best_match(results, format, artist, album):
-    return_match = {artist: artist, album: album, 'torrent_hash': None, 'message': ''}
+    return_match = {artist: artist, album: album, 'torrent_hash': None, 'failue_message': None}
 
-    filtered_results = [match for match in results.values()if (normalize(field) in match['title'].lower() for field in [artist, album])]
-
+    filtered_results = [match for match in results.values()if all(normalize(field).lower() in match['title'].lower() for field in [artist, album])]
     if len(results) == 0:
-        return_match['message'] = 'Results found but they didn\'t match the artist and album exactly.'
+        return_match['failure_message'] = 'Results found but they didn\'t match the artist and album exactly.'
         return return_match
 
-    results = sorted(results, key=lambda x: x['seeds'], reverse=True)
-    if results[0]['seeds'] == 0:
-        return_match['message'] = 'Results found, but none had seeds.'
+    filtered_results = sorted(filtered_results, key=lambda x: x['seeds'], reverse=True)
+    if filtered_results[0]['seeds'] == 0:
+        return_match['failure_message'] = 'Results found, but none had seeds.'
         return return_match
 
     if format.lower() in ['flac', 'ape']:
         format = 'lossless'
-    best_match = next((match for match in results if match['category'] == format), None)
+    best_match = next((match for match in filtered_results if match['category'] == format), None)
     if best_match:
-        print('Found {0}. Torrent hash is {1}.'
-            .format(best_match['title'], best_match['torrent_hash']))
         return_match.update(best_match)
-        return_match['message'] = 'success'
     else:
-        return_match['message'] = 'Results with seeds found but none in the desired file format.'
+        return_match['failure_message'] = 'Results with seeds found but none in the desired file format.'
     return return_match
+
+def save_hashes_to_file(torrent_hashes, dest_dir):
+    if dest_dir == '$HOME/downloads':
+        dest_dir = os.environ['HOME']+'/downloads'
+    for hash in torrent_hashes:
+        magnet_file = '{0}/{1}.magnet'.format(dest_dir, normalize(hash['title']))
+        with open(magnet_file, 'w') as output_file:
+            magnet_link = 'magnet:?xt=urn:btih:%s' % hash['torrent_hash']
+            output_file.write(magnet_link)
+        print('Results saved to %s' % magnet_file)
 
 
 if __name__ == '__main__':
 
     config_location = os.path.join(sys.path[0], 'config.json')
-    config = {}
-    album_list = ()
     
     try:
         with open(config_location) as config_file:
@@ -127,3 +132,4 @@ if __name__ == '__main__':
 
     album_list = get_albums_from_playlist(config)
     torrent_hashes = get_torrent_hashes(album_list, config['format'])
+    save_hashes_to_file(torrent_hashes, config['dir'])

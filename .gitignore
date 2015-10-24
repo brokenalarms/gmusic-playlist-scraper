@@ -1,5 +1,6 @@
 *.sublime-project
 *.sublime-workspace
+.idea
 build
 dist
 gmusic_playlist_scraper.egg-info

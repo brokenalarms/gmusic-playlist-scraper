@@ -10,6 +10,5 @@ setup(
 	install_requires=[
 	'argparse',
 	'gmusicapi',
-	'requests',
-	'lxml']
+	'requests']
 	)
