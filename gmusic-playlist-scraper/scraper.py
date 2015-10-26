@@ -33,7 +33,7 @@ def get_albums_from_playlist(config):
     try:
         api.login(login, password, android_id)
         all_playlists = api.get_all_user_playlist_contents()
-        matched_playlist = next(playlist for playlist in all_playlists if playlist['name'] == playlist_name)
+        matched_playlist = next(playlist for playlist in all_playlists if playlist['name'].lower() == playlist_name.lower())
         album_list = {(entry['track']['albumArtist'], entry['track']['album'])
                   for entry in matched_playlist['tracks'] if 'track' in entry}
         return album_list
@@ -72,14 +72,15 @@ def get_torrent_hashes(album_list, format):
 
     if len(not_found_list) > 0:
         print('The following searches were unsuccessful:')
+        print(not_found_list)
         for item in not_found_list:
-            print('{0} - {1}: {3}'.format(item['artist'], item['album'], item['failure_message']))
+            print('{0} - {1}: {2}'.format(item['artist'], item['album'], item['failure_message']))
 
-    return found_list
+    return found_list if len(found_list) > 0 else None
 
 
 def get_best_match(results, format, artist, album):
-    return_match = {artist: artist, album: album, 'torrent_hash': None, 'failue_message': None}
+    return_match = {'artist': artist, 'album': album, 'torrent_hash': None, 'failue_message': None}
 
     filtered_results = [match for match in results.values()if all(normalize(field).lower() in match['title'].lower() for field in [artist, album])]
     if len(results) == 0:
@@ -101,8 +102,10 @@ def get_best_match(results, format, artist, album):
     return return_match
 
 def save_hashes_to_file(torrent_hashes, dest_dir):
-    if dest_dir == '$HOME/downloads':
-        dest_dir = os.environ['HOME']+'/downloads'
+    dest_dir = os.path.expandvars(dest_dir)
+    if not os.path.isdir(dest_dir):
+        os.makedirs(dest_dir)
+
     for hash in torrent_hashes:
         magnet_file = '{0}/{1}.magnet'.format(dest_dir, normalize(hash['title']))
         with open(magnet_file, 'w') as output_file:
@@ -131,5 +134,7 @@ if __name__ == '__main__':
             print('Invalid or incomplete config.json. Must at least contain login and password')
 
     album_list = get_albums_from_playlist(config)
-    torrent_hashes = get_torrent_hashes(album_list, config['format'])
-    save_hashes_to_file(torrent_hashes, config['dir'])
+    if album_list is not None:
+        torrent_hashes = get_torrent_hashes(album_list, config['format'])
+    if torrent_hashes is not None:
+        save_hashes_to_file(torrent_hashes, config['dir'])
