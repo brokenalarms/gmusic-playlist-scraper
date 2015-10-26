@@ -9,6 +9,5 @@ setup(
 	licence='MIT',
 	install_requires=[
 	'argparse',
-	'gmusicapi',
-	'requests']
+	'gmusicapi']
 	)

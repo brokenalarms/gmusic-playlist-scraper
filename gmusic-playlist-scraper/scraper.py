@@ -6,11 +6,11 @@ import os
 import sys
 import re
 import unicodedata
+import urllib2
 
 # pip dependencies
 import argparse
 from gmusicapi import Mobileclient
-import requests
 
 def parse_args(config_file_exists):
     parser = argparse.ArgumentParser()
@@ -58,7 +58,7 @@ def get_torrent_hashes(album_list, format):
         print('Searching for {0} - {1}...'.format(artist, album))
         search_string = replace(normalize(' '.join(artist_album)), '%20')
         query = 'http://torrentproject.se/?s=' + search_string + '&out=json'
-        results = requests.get(query).json()
+        results = json.load(urllib2.urlopen(query))
 
         if results.pop('total_found', '0') is not '0':
             best_match = get_best_match(results, format, artist, album)
@@ -72,7 +72,6 @@ def get_torrent_hashes(album_list, format):
 
     if len(not_found_list) > 0:
         print('The following searches were unsuccessful:')
-        print(not_found_list)
         for item in not_found_list:
             print('{0} - {1}: {2}'.format(item['artist'], item['album'], item['failure_message']))
 
