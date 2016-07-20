@@ -5,4 +5,3 @@ build
 dist
 gmusic_playlist_scraper.egg-info
 config.json
-torrent_scraper3.*

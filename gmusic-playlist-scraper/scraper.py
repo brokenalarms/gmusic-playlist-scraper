@@ -14,10 +14,12 @@ from gmusicapi import Mobileclient
 
 def parse_args(config_file_exists):
     parser = argparse.ArgumentParser()
+    home_dir = os.path.expanduser("~")
+    torrents_dir = os.path.join(home_dir, 'downloads', 'torrents')
     parser.add_argument("playlist", help="Google music playlist title")
     parser.add_argument("-f", "--format", default='mp3', help="optional desired format - eg 'mp3' or 'FLAC' (default is \"mp3\")")
-    parser.add_argument("-d", "--dir", default='$HOME/downloads', help="directory for retrieved .magnet files. File can be auto-added to Deluge using the bundled 'AutoAdd' plugin. Default location is \"$HOME/Downloads\"")
-    parser.add_argument("-aid", "--android_id", default='1234567890abcdef', help="12-digit device id for login identification")
+    parser.add_argument("-d", "--dir", default=torrents_dir, help="directory for retrieved .magnet files. File can be auto-added to Deluge using the bundled 'AutoAdd' plugin. Default location is \"$HOME/Downloads\"")
+    parser.add_argument("-aid", "--android_id", help="12-digit device id for login identification")
     if not config_file_exists:
         parser.add_argument("-l", "--login", help="login for Google Music", required=True)
         parser.add_argument("-p", "--password", help="password for Google Music", required=True)
@@ -28,8 +30,7 @@ def get_albums_from_playlist(config):
     login, password, playlist_name, android_id = map(config.get, ('login', 'password', 'playlist', 'android_id'))
     api = Mobileclient()
     if not android_id:
-        print('android_id not specified. Using "%s" - you will receive an email to your Google account saying an unknown device is being used.' % config['android_id'])
-    
+        android_id = Mobileclient.FROM_MAC_ADDRESS 
     try:
         api.login(login, password, android_id)
         all_playlists = api.get_all_user_playlist_contents()
@@ -39,6 +40,8 @@ def get_albums_from_playlist(config):
         return album_list
     except StopIteration:
         print('playlist not found.')
+    except Exception:
+        sys.exit('wrong username or password.')
     finally:
         api.logout()
 
@@ -57,7 +60,7 @@ def get_torrent_hashes(album_list, format):
         artist, album = artist_album
         print('Searching for {0} - {1}...'.format(artist, album))
         search_string = replace(normalize(' '.join(artist_album)), '%20')
-        query = 'http://torrentproject.se/?s=' + search_string + '&out=json'
+        query = ('http://torrentproject.se/?s=' + search_string + '&out=json').lower()
         results = json.load(urllib2.urlopen(query))
 
         if results.pop('total_found', '0') is not '0':
@@ -65,6 +68,7 @@ def get_torrent_hashes(album_list, format):
             if best_match['torrent_hash'] is not None:
                 print('Found as: %s' % normalize(best_match['title']))
                 found_list.append(best_match)
+                save_hash_to_file(best_match, config['dir'])
             else:
                 not_found_list.append(best_match)
         else: 
@@ -79,15 +83,15 @@ def get_torrent_hashes(album_list, format):
 
 
 def get_best_match(results, format, artist, album):
-    return_match = {'artist': artist, 'album': album, 'torrent_hash': None, 'failue_message': None}
+    return_match = {'artist': artist, 'album': album, 'torrent_hash': None, 'failure_message': None}
 
-    filtered_results = [match for match in results.values()if all(normalize(field).lower() in match['title'].lower() for field in [artist, album])]
+    filtered_results = [match for match in results.values() if all(normalize(field).lower() in match['title'].lower() for field in [artist, album])]
     if len(results) == 0:
         return_match['failure_message'] = 'Results found but they didn\'t match the artist and album exactly.'
         return return_match
 
     filtered_results = sorted(filtered_results, key=lambda x: x['seeds'], reverse=True)
-    if filtered_results[0]['seeds'] == 0:
+    if filtered_results[0] is None or filtered_results[0]['seeds'] == 0:
         return_match['failure_message'] = 'Results found, but none had seeds.'
         return return_match
 
@@ -100,17 +104,16 @@ def get_best_match(results, format, artist, album):
         return_match['failure_message'] = 'Results with seeds found but none in the desired file format.'
     return return_match
 
-def save_hashes_to_file(torrent_hashes, dest_dir):
+def save_hash_to_file(torrent_hash, dest_dir):
     dest_dir = os.path.expandvars(dest_dir)
     if not os.path.isdir(dest_dir):
         os.makedirs(dest_dir)
 
-    for hash in torrent_hashes:
-        magnet_file = '{0}/{1}.magnet'.format(dest_dir, normalize(hash['title']))
-        with open(magnet_file, 'w') as output_file:
-            magnet_link = 'magnet:?xt=urn:btih:%s' % hash['torrent_hash']
-            output_file.write(magnet_link)
-        print('Results saved to %s' % magnet_file)
+    magnet_file = '{0}/{1}.magnet'.format(dest_dir, normalize(torrent_hash['title']))
+    with open(magnet_file, 'w') as output_file:
+        magnet_link = 'magnet:?xt=urn:btih:%s' % torrent_hash['torrent_hash']
+        output_file.write(magnet_link)
+    print('Results saved to %s' % magnet_file)
 
 
 if __name__ == '__main__':
@@ -130,10 +133,8 @@ if __name__ == '__main__':
         if not os.path.isfile(config_location):
             config = parse_args(False)
         else:
-            print('Invalid or incomplete config.json. Must at least contain login and password')
+            sys.exit('Invalid or incomplete config.json. Must at least contain login and password')
 
     album_list = get_albums_from_playlist(config)
     if album_list is not None:
-        torrent_hashes = get_torrent_hashes(album_list, config['format'])
-    if torrent_hashes is not None:
-        save_hashes_to_file(torrent_hashes, config['dir'])
+        get_torrent_hashes(album_list, config['format'])
